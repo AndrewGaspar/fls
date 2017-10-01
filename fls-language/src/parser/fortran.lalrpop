@@ -1,0 +1,259 @@
+grammar;
+    
+use types;
+use lexer::Tok;
+use std::str::FromStr;
+
+pub Program: types::Program =
+    Stmts<ProgramUnit> => types::Program::new(<>);
+
+ProgramUnit: types::ProgramUnit = {
+    MainProgram,
+};
+
+MainProgram: types::ProgramUnit = {
+    <stmt:ProgramStmt?> SpecificationPart? ExecutionPart? InternalSubprogramPart? <end:EndProgram> =>
+        types::ProgramUnit::new(stmt, end)
+};
+
+ProgramStmt: String = {
+    "PROGRAM" <name:"Id"> StmtSeparator => name
+};
+
+EndProgram: Option<String> = {
+    "END" "PROGRAM" <name:"Id"> => Some(name),
+    "END" "PROGRAM"             => None,
+    "END"                       => None,
+};
+
+SpecificationPart: () = {};
+ExecutionPart: () = ExecutableConstruct ExecutablePartConstruct*;
+ExecutablePartConstruct: () = {};
+InternalSubprogramPart: () = {};
+
+ExecutableConstruct: () = {
+    ActionStmt,
+    // AssociateConstruct,
+    // BlockConstruct,
+    // CaseConstruct,
+    // CriticalConstruct,
+    // DoConstruct,
+    // IfConstruct,
+    // SelectRankConstruct,
+    // SelectTypeConstruct,
+    // WhereConstruct,
+    // ForallConstruct,
+};
+
+ActionStmt: () = {
+    // AllocateStmt,
+    // AssignmentStmt,
+    // BackspaceStmt,
+    // CallStmt,
+    // CloseStmt,
+    // ContinueStmt,
+    // CycleStmt,
+    // DeallocateStmt,
+    // EndFunctionStmt,
+    // EndMpSubprogramStmt,
+    // EndProgramStmt,
+    // EndSubroutineStmt,
+    // EndfileStmt,
+    // ErrorStopStmt,
+    // EventPostStmt,
+    // EventWaitStmt,
+    // ExitStmt,
+    // FlushStmt,
+    // GotoStmt,
+    // IfStmt,
+    // InquireStmt,
+    // LockStmt,
+    // NullifyStmt,
+    // OpenStmt,
+    // PointerAssignmentStmt,
+    PrintStmt,
+    // ReadStmt,
+    // ReturnStmt,
+    // RewindStmt,
+    // StopStmt,
+    // SyncAllStmt,
+    // SyncImagesStmt,
+    // SyncMemoryStmt,
+    // UnlockStmt,
+    // WaitStmt,
+    // WhereStmt,
+    // WriteStmt,
+    // ComputedGotoStmt,
+    // ForallStmt,
+};
+
+PrintStmt: () = "PRINT" Format OutputItem* StmtSeparator;
+
+Format: () = {
+    DefaultCharExpr,
+    // Label,
+    "*"
+};
+
+OutputItem: () = {
+    Expr,
+    // IoImpliedDo
+};
+
+DefaultCharExpr = Expr;
+
+Expr: () = {
+    Level5Expr,
+    Expr "DefinedOp" Level5Expr,
+};
+
+Level5Expr: () = {
+    EquivOperand,
+    Level5Expr EquivOp EquivOperand
+};
+
+Level4Expr: () = {
+    Level3Expr,
+    Level3Expr RelOp Level3Expr,
+};
+
+Level3Expr: () = {
+    Level2Expr,
+    Level3Expr "//" Level2Expr,
+};
+
+Level2Expr: () = {
+    AddOperand,
+    AddOp AddOperand,
+    Level2Expr AddOp AddOperand,
+};
+Level1Expr: () = {
+    Primary,
+    "DefinedOp" Primary,
+};
+
+AndOperand: () = {
+    Level4Expr,
+    ".NOT." Level4Expr,
+};
+
+OrOperand: () = {
+    AndOperand,
+    OrOperand ".AND." AndOperand,
+};
+
+EquivOperand: () = {
+    OrOperand,
+    EquivOperand ".OR." OrOperand,
+};
+
+MultOperand: () = {
+    Level1Expr,
+    Level1Expr "**" MultOperand,
+};
+
+AddOperand: () = {
+    MultOperand,
+    AddOperand MultOp MultOperand,
+};
+
+EquivOp: () = {
+    ".EQV.",
+    ".NEQV.",
+};
+
+RelOp: () = {
+    ".EQ.",
+    ".NE.",
+    ".LT.",
+    ".LE.",
+    ".GT.",
+    ".GE.",
+};
+
+AddOp: () = {
+    "+",
+    "-",
+};
+
+MultOp: () = {
+    "*",
+    "/"
+};
+
+Primary: () = {
+    Constant,
+    // Designator,
+    // ArrayConstructor,
+    // StructureConstructor,
+    // FunctionReference,
+    // TypeParamInquiry,
+    // TypeParamName,
+    "(" Expr ")"
+};
+
+Constant: () = {
+    LiteralConstant,
+    // NamedConstant,
+};
+
+LiteralConstant: () = {
+    // IntLiteralConstant,
+    // RealLiteralConstant,
+    // ComplexLiteralConstant,
+    // LogicalLiteralConstant,
+    "CharLiteral",
+    // BozLiteralConstant,
+};
+
+Stmts<T>: Vec<T> = { // (0)
+    <v:(<T> StmtSeparator+)*> <e:T?> => match e { // (1)
+        None=> v,
+        Some(e) => {
+            let mut v = v;
+            v.push(e);
+            v
+        }
+    }
+};
+
+StmtSeparator: () = {
+    ";",
+    "\n",
+};
+
+extern {
+    type Location = usize;
+    type Error = lexer::Error;
+
+    enum Tok<'input> {
+        "PROGRAM"        => Tok::Program,
+        "END"            => Tok::End,
+        "PRINT"          => Tok::Print,
+        "Id"             => Tok::Id(<FortranUserStr<'input>>),
+        "IntegerLiteral" => Tok::IntegerLiteralConstant(<&'input str>),
+        "CharLiteral"    => Tok::CharLiteralConstant(<&'input str>),
+        "DefinedOp"      => Tok::DefinedOperation(<FortranUserStr<'input>>),
+        ".AND."          => Tok::And,
+        ".EQV."          => Tok::Equivalent,
+        ".NEQV."         => Tok::NotEquivalent,
+        ".NOT."          => Tok::Not,
+        ".OR."           => Tok::Or,
+        ".EQ."           => Tok::Equals,
+        ".NE."           => Tok::NotEquals,
+        ".LT."           => Tok::LessThan,
+        ".LE."           => Tok::LessThanOrEquals,
+        ".GT."           => Tok::GreaterThan,
+        ".GE."           => Tok::GreaterThanOrEquals,
+        "//"             => Tok::SlashSlash,
+        "+"              => Tok::Plus,
+        "-"              => Tok::Minus,
+        "*"              => Tok::Star,
+        "/"              => Tok::Slash,
+        "**"             => Tok::StarStar,
+        "\n"             => Tok::NewLine,
+        ";"              => Tok::SemiColon,
+        "("              => Tok::LeftParen,
+        ")"              => Tok::RightParen,
+    }
+}
