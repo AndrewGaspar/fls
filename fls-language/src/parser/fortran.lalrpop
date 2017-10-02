@@ -87,7 +87,7 @@ ActionStmt: () = {
     // ForallStmt,
 };
 
-PrintStmt: () = "PRINT" Format OutputItem* StmtSeparator;
+PrintStmt: () = "PRINT" Format "," List<OutputItem> StmtSeparator;
 
 Format: () = {
     DefaultCharExpr,
@@ -206,8 +206,19 @@ LiteralConstant: () = {
     // BozLiteralConstant,
 };
 
-Stmts<T>: Vec<T> = { // (0)
-    <v:(<T> StmtSeparator+)*> <e:T?> => match e { // (1)
+Stmts<T>: Vec<T> = {
+    <v:(<T> StmtSeparator+)*> <e:T?> => match e {
+        None=> v,
+        Some(e) => {
+            let mut v = v;
+            v.push(e);
+            v
+        }
+    }
+};
+
+List<T>: Vec<T> = {
+    <v:(<T> ",")*> <e:T?> => match e {
         None=> v,
         Some(e) => {
             let mut v = v;
@@ -253,6 +264,7 @@ extern {
         "**"             => Tok::StarStar,
         "\n"             => Tok::NewLine,
         ";"              => Tok::SemiColon,
+        ","              => Tok::Comma,
         "("              => Tok::LeftParen,
         ")"              => Tok::RightParen,
     }
