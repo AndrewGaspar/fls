@@ -13,7 +13,7 @@ mod tests;
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Error {
     pub location: usize,
-    pub code: ErrorCode
+    pub code: ErrorCode,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -33,20 +33,23 @@ enum TakeUntil {
     Error(ErrorCode),
 }
 
-fn error<T>(c: ErrorCode, l: usize) -> Result<T,Error> {
-    Err(Error { location: l, code: c })
+fn error<T>(c: ErrorCode, l: usize) -> Result<T, Error> {
+    Err(Error {
+        location: l,
+        code: c,
+    })
 }
 
 #[derive(Clone, Debug)]
 pub struct UserStr<'input> {
-    string: &'input str
+    string: &'input str,
 }
 
 impl<'input> UserStr<'input> {
     pub fn new(string: &'input str) -> UserStr {
         debug_assert!(string.is_ascii());
 
-        UserStr { string:  string }
+        UserStr { string: string }
     }
 
     pub fn iter(&self) -> UserStrIterator<'input> {
@@ -90,14 +93,14 @@ impl<'input> Iterator for UserStrIterator<'input> {
                 }
                 Some(x) => Some(*x),
                 None => None,
-            }
+            };
         }
     }
 }
 
 #[derive(Clone, Debug)]
 pub struct CaseInsensitiveUserStr<'input> {
-    user_str: UserStr<'input>
+    user_str: UserStr<'input>,
 }
 
 impl<'input> CaseInsensitiveUserStr<'input> {
@@ -125,7 +128,7 @@ pub enum Tok<'input> {
     // statements
     Program,
     End,
-    
+
     // Actions
     Print,
 
@@ -174,27 +177,24 @@ pub struct Tokenizer<'input> {
 
 pub type Spanned<T> = (usize, T, usize);
 
-const KEYWORDS: &'static [(&'static str, Tok<'static>)] = &[
-    ("PROGRAM", Program),
-    ("END",     End),
-    ("PRINT",   Print),
-    ];
+const KEYWORDS: &'static [(&'static str, Tok<'static>)] =
+    &[("PROGRAM", Program), ("END", End), ("PRINT", Print)];
 
 const INTRINSIC_OPERATORS: &'static [(&'static str, Tok<'static>)] = &[
-    ("AND",   And),
-    ("EQV",   Equivalent),
-    ("NEQV",  NotEquivalent),
-    ("NOT",   Not),
-    ("OR",    Or),
-    ("EQ",    Equals),
-    ("NE",    NotEquals),
-    ("LT",    LessThan),
-    ("LE",    LessThanOrEquals),
-    ("GT",    GreaterThan),
-    ("GE",    GreaterThanOrEquals),
-    ("TRUE",  True),
-    ("FALSE", False)
-    ];
+    ("AND", And),
+    ("EQV", Equivalent),
+    ("NEQV", NotEquivalent),
+    ("NOT", Not),
+    ("OR", Or),
+    ("EQ", Equals),
+    ("NE", NotEquals),
+    ("LT", LessThan),
+    ("LE", LessThanOrEquals),
+    ("GT", GreaterThan),
+    ("GE", GreaterThanOrEquals),
+    ("TRUE", True),
+    ("FALSE", False),
+];
 
 impl<'input> Tokenizer<'input> {
     pub fn new(text: &'input str) -> Tokenizer<'input> {
@@ -208,35 +208,30 @@ impl<'input> Tokenizer<'input> {
     }
 
     fn operator(&mut self, idx0: usize) -> Result<Spanned<Tok<'input>>, Error> {
-        let terminate = |c: char| {
-            if is_operator_continue(c) {
-                Continue
-            } else if c == '.' {
-                Stop
-            } else {
-                Error(UnrecognizedToken)
-            }
+        let terminate = |c: char| if is_operator_continue(c) {
+            Continue
+        } else if c == '.' {
+            Stop
+        } else {
+            Error(UnrecognizedToken)
         };
-        
+
         match self.take_until(idx0, terminate) {
             Some(Ok(idx1)) => {
                 // consume .
                 self.bump();
 
                 // don't include . in operator name
-                let operator =
-                    CaseInsensitiveUserStr::new(&self.text[idx0+1..idx1]);
+                let operator = CaseInsensitiveUserStr::new(&self.text[idx0 + 1..idx1]);
 
-                let tok =
-                    INTRINSIC_OPERATORS
-                        .iter()
-                        .filter(|&&(w, _)|
-                            CaseInsensitiveUserStr::new(w) == operator)
-                        .map(|&(_, ref t)| t.clone())
-                        .next()
-                        .unwrap_or_else(|| DefinedOperator(operator));
+                let tok = INTRINSIC_OPERATORS
+                    .iter()
+                    .filter(|&&(w, _)| CaseInsensitiveUserStr::new(w) == operator)
+                    .map(|&(_, ref t)| t.clone())
+                    .next()
+                    .unwrap_or_else(|| DefinedOperator(operator));
 
-                Ok((idx0, tok, idx1+1))
+                Ok((idx0, tok, idx1 + 1))
             }
             Some(Err(err)) => Err(err),
             None => error(UnrecognizedToken, idx0),
@@ -244,26 +239,22 @@ impl<'input> Tokenizer<'input> {
     }
 
     fn identifierish(&mut self, idx0: usize) -> Result<Spanned<Tok<'input>>, Error> {
-        let terminate = |c: char| {
-            if is_identifier_continue(c) {
-                Continue
-            } else {
-                Stop
-            }
+        let terminate = |c: char| if is_identifier_continue(c) {
+            Continue
+        } else {
+            Stop
         };
-        
+
         match self.take_until(idx0, terminate) {
             Some(Ok(idx1)) => {
                 let word = CaseInsensitiveUserStr::new(&self.text[idx0..idx1]);
 
-                let tok =
-                    KEYWORDS
-                        .iter()
-                        .filter(|&&(w, _)|
-                            CaseInsensitiveUserStr::new(w) == word)
-                        .map(|&(_, ref t)| t.clone())
-                        .next()
-                        .unwrap_or_else(|| Id(word));
+                let tok = KEYWORDS
+                    .iter()
+                    .filter(|&&(w, _)| CaseInsensitiveUserStr::new(w) == word)
+                    .map(|&(_, ref t)| t.clone())
+                    .next()
+                    .unwrap_or_else(|| Id(word));
 
                 Ok((idx0, tok, idx1))
             }
@@ -295,11 +286,11 @@ impl<'input> Tokenizer<'input> {
             Some(Ok(idx1)) => {
                 self.bump(); // consume the closing quote
                 // do not include quotes in the str
-                let text = UserStr::new(&self.text[idx0+1..idx1]);
-                Ok((idx0, CharLiteralConstant(text), idx1+1))
+                let text = UserStr::new(&self.text[idx0 + 1..idx1]);
+                Ok((idx0, CharLiteralConstant(text), idx1 + 1))
             }
             Some(Err(err)) => Err(err),
-            None => error(UnterminatedStringLiteral, idx0)
+            None => error(UnterminatedStringLiteral, idx0),
         }
     }
 
@@ -312,7 +303,7 @@ impl<'input> Tokenizer<'input> {
                 None => return,
                 Some(_) => {
                     self.bump();
-                    continue
+                    continue;
                 }
             }
         }
@@ -325,26 +316,26 @@ impl<'input> Tokenizer<'input> {
             return match self.lookahead {
                 Some((idx0, '\n')) => {
                     self.bump();
-                    Some(Ok((idx0, NewLine, idx0+1)))
+                    Some(Ok((idx0, NewLine, idx0 + 1)))
                 }
                 Some((idx0, '\r')) => {
                     match self.bump() {
                         Some((_, '\n')) => {
                             self.bump();
-                            Some(Ok((idx0, NewLine, idx0+2)))
+                            Some(Ok((idx0, NewLine, idx0 + 2)))
                         }
                         // CR is not a supported line ending
                         _ => Some(error(InvalidCarriageReturn, idx0)),
                     }
-                },
+                }
                 Some((idx0, _)) => {
                     // this function shouldn't have been called if not currently
                     // at the start of a newline
-                    assert!(false); 
+                    assert!(false);
                     Some(error(UnrecognizedToken, idx0))
                 }
-                None => None
-            }
+                None => None,
+            };
         }
     }
 
@@ -356,7 +347,7 @@ impl<'input> Tokenizer<'input> {
                 Some((_, '!')) => {
                     self.bump();
                     self.commentary();
-                    continue
+                    continue;
                 }
                 Some((_, c)) if is_new_line_start(c) => {
                     first_line = false;
@@ -372,9 +363,7 @@ impl<'input> Tokenizer<'input> {
                     self.bump();
                     continue;
                 }
-                Some((idx1, _)) if first_line => {
-                    Some(error(UnexpectedToken, idx1))
-                }
+                Some((idx1, _)) if first_line => Some(error(UnexpectedToken, idx1)),
                 // If an & is encountered, we're done processing the
                 // continuation. The caller should continue whatever
                 // tokenization process it was previously performing.
@@ -386,7 +375,7 @@ impl<'input> Tokenizer<'input> {
                 // ended. The new character is a new token.
                 Some(_) => None,
                 None => Some(error(UnterminatedContinuationLine, idx0)),
-            }
+            };
         }
     }
 
@@ -411,11 +400,11 @@ impl<'input> Tokenizer<'input> {
             return match self.lookahead {
                 Some((idx0, '+')) => {
                     self.bump();
-                    Some(Ok((idx0, Plus, idx0+1)))
+                    Some(Ok((idx0, Plus, idx0 + 1)))
                 }
                 Some((idx0, '-')) => {
                     self.bump();
-                    Some(Ok((idx0, Minus, idx0+1)))
+                    Some(Ok((idx0, Minus, idx0 + 1)))
                 }
                 Some((idx0, '*')) => {
                     self.bump();
@@ -427,10 +416,9 @@ impl<'input> Tokenizer<'input> {
                     match self.lookahead {
                         Some((idx1, '*')) => {
                             self.bump();
-                            Some(Ok((idx0, StarStar, idx1+1)))
+                            Some(Ok((idx0, StarStar, idx1 + 1)))
                         }
-                        _ =>
-                            Some(Ok((idx0, Star, idx0+1)))
+                        _ => Some(Ok((idx0, Star, idx0 + 1))),
                     }
                 }
                 Some((idx0, '/')) => {
@@ -443,19 +431,18 @@ impl<'input> Tokenizer<'input> {
                     match self.lookahead {
                         Some((idx1, '/')) => {
                             self.bump();
-                            Some(Ok((idx0, SlashSlash, idx1+1)))
+                            Some(Ok((idx0, SlashSlash, idx1 + 1)))
                         }
-                        _ =>
-                            Some(Ok((idx0, Slash, idx0+1)))
+                        _ => Some(Ok((idx0, Slash, idx0 + 1))),
                     }
                 }
                 Some((idx0, '(')) => {
                     self.bump();
-                    Some(Ok((idx0, LeftParen, idx0+1)))
+                    Some(Ok((idx0, LeftParen, idx0 + 1)))
                 }
                 Some((idx0, ')')) => {
                     self.bump();
-                    Some(Ok((idx0, RightParen, idx0+1)))
+                    Some(Ok((idx0, RightParen, idx0 + 1)))
                 }
                 Some((idx0, '.')) => {
                     self.bump();
@@ -463,31 +450,29 @@ impl<'input> Tokenizer<'input> {
                 }
                 Some((idx0, ';')) => {
                     self.bump();
-                    Some(Ok((idx0, SemiColon, idx0+1)))
+                    Some(Ok((idx0, SemiColon, idx0 + 1)))
                 }
                 Some((idx0, ',')) => {
                     self.bump();
-                    Some(Ok((idx0, Comma, idx0+1)))
+                    Some(Ok((idx0, Comma, idx0 + 1)))
                 }
                 Some((_, '&')) => {
                     if let Some(err) = self.skip_continuation() {
                         return Some(Err(err));
                     }
 
-                    continue
+                    continue;
                 }
                 Some((idx0, c)) if (c == '"' || c == '\'') => {
                     self.bump();
                     Some(self.string_literal(idx0, c))
                 }
                 // Handle LF
-                Some((_, c)) if is_new_line_start(c) => {
-                    self.consume_new_line()
-                }
+                Some((_, c)) if is_new_line_start(c) => self.consume_new_line(),
                 Some((_, '!')) => {
                     self.bump();
                     self.commentary();
-                    continue
+                    continue;
                 }
                 Some((idx0, c)) if is_identifier_start(c) => {
                     self.bump();
@@ -497,18 +482,15 @@ impl<'input> Tokenizer<'input> {
                     self.bump();
                     continue;
                 }
-                Some((idx, _)) => {
-                    Some(error(UnrecognizedToken, idx))
-                }
-                None => {
-                    None
-                }
+                Some((idx, _)) => Some(error(UnrecognizedToken, idx)),
+                None => None,
             };
         }
     }
 
     fn take_until<F>(&mut self, idx0: usize, mut terminate: F) -> Option<Result<usize, Error>>
-        where F: FnMut(char) -> TakeUntil
+    where
+        F: FnMut(char) -> TakeUntil,
     {
         loop {
             return match self.lookahead {
@@ -518,21 +500,21 @@ impl<'input> Tokenizer<'input> {
                         return Some(Err(err));
                     }
 
-                    continue
+                    continue;
                 }
                 Some((idx1, c)) => {
                     match terminate(c) {
                         Continue => {
                             match self.bump() {
                                 Some(_) => continue,
-                                None => Some(Ok(idx1+1))
+                                None => Some(Ok(idx1 + 1)),
                             }
                         }
                         Stop => Some(Ok(idx1)),
-                        Error(err_code) => Some(error(err_code, idx0))
+                        Error(err_code) => Some(error(err_code, idx0)),
                     }
                 }
-            }
+            };
         }
     }
 
@@ -564,4 +546,6 @@ fn is_identifier_continue(c: char) -> bool {
     (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c == '_')
 }
 
-fn is_new_line_start(c: char) -> bool { c == '\r' || c == '\n' }
+fn is_new_line_start(c: char) -> bool {
+    c == '\r' || c == '\n'
+}

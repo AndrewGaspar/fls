@@ -3,13 +3,12 @@ use super::Tok::*;
 
 enum Expectation<'a> {
     ExpectTok(Tok<'a>),
-    ExpectErr(ErrorCode)
+    ExpectErr(ErrorCode),
 }
 
 use self::Expectation::*;
 
-fn gen_test(input: &str, expected: Vec<(&str, Expectation)>)
-{
+fn gen_test(input: &str, expected: Vec<(&str, Expectation)>) {
     // use $ to signal EOL because it can be replaced with a single space
     // for spans, and because it applies also to r#XXX# style strings:
     let input = input.replace("$", "\n");
@@ -25,7 +24,13 @@ fn gen_test(input: &str, expected: Vec<(&str, Expectation)>)
                 assert_eq!(Ok((expected_start, expected_tok, expected_end)), token);
             }
             ExpectErr(expected_ec) => {
-                assert_eq!(Err(Error{ location: expected_start, code: expected_ec }), token)
+                assert_eq!(
+                    Err(Error {
+                        location: expected_start,
+                        code: expected_ec,
+                    }),
+                    token
+                )
             }
         }
     }
@@ -34,14 +39,15 @@ fn gen_test(input: &str, expected: Vec<(&str, Expectation)>)
     assert_eq!(None, tokenizer.skip(len).next());
 }
 
-fn test(input: &str, expected: Vec<(&str, Tok)>)
-{
-    let generic_expected = expected.into_iter().map( | (span, tok) | (span, ExpectTok(tok)) ).collect();
+fn test(input: &str, expected: Vec<(&str, Tok)>) {
+    let generic_expected = expected
+        .into_iter()
+        .map(|(span, tok)| (span, ExpectTok(tok)))
+        .collect();
     gen_test(input, generic_expected);
 }
 
-fn test_err(input: &str, expected: (&str, ErrorCode))
-{
+fn test_err(input: &str, expected: (&str, ErrorCode)) {
     let (span, ec) = expected;
     gen_test(input, vec![(span, ExpectErr(ec))])
 }
@@ -53,26 +59,41 @@ mod fortran_user_string {
     fn basic() {
         assert_eq!(
             CaseInsensitiveUserStr::new("hello"),
-            CaseInsensitiveUserStr::new("HELLO"));
+            CaseInsensitiveUserStr::new("HELLO")
+        );
 
         assert_eq!(
             CaseInsensitiveUserStr::new("hello"),
-            CaseInsensitiveUserStr::new("Hello"));
+            CaseInsensitiveUserStr::new("Hello")
+        );
     }
 
     #[test]
     fn split() {
         assert_eq!(
             UserStr::new("hello"),
-            UserStr::new(r"h&
-            &ello"));
+            UserStr::new(
+                r"h&
+            &ello",
+            )
+        );
 
         assert_eq!(
             CaseInsensitiveUserStr::new("hello"),
-            CaseInsensitiveUserStr::new(r"h&
-            &eLLo"));
+            CaseInsensitiveUserStr::new(
+                r"h&
+            &eLLo",
+            )
+        );
     }
 }
+
+#[cfg_attr(rustfmt, rustfmt_skip)]
+mod tokenizer_tests {
+
+use super::test;
+use super::{CaseInsensitiveUserStr, UserStr};
+use super::Tok::*;
 
 #[test]
 fn basic() {
@@ -195,4 +216,6 @@ r#"
     ~~~~
 ~~~~~~~"#, Id(CaseInsensitiveUserStr::new("hello"))),
     ]);
+}
+
 }
