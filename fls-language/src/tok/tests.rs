@@ -1,4 +1,4 @@
-use super::{Tok, ErrorCode, Error, Tokenizer, FortranUserStr};
+use super::{Tok, ErrorCode, Error, Tokenizer, CaseInsensitiveUserStr, UserStr};
 use super::Tok::*;
 
 enum Expectation<'a> {
@@ -46,6 +46,34 @@ fn test_err(input: &str, expected: (&str, ErrorCode))
     gen_test(input, vec![(span, ExpectErr(ec))])
 }
 
+mod fortran_user_string {
+    use super::{CaseInsensitiveUserStr, UserStr};
+
+    #[test]
+    fn basic() {
+        assert_eq!(
+            CaseInsensitiveUserStr::new("hello"),
+            CaseInsensitiveUserStr::new("HELLO"));
+
+        assert_eq!(
+            CaseInsensitiveUserStr::new("hello"),
+            CaseInsensitiveUserStr::new("Hello"));
+    }
+
+    #[test]
+    fn split() {
+        assert_eq!(
+            UserStr::new("hello"),
+            UserStr::new(r"h&
+            &ello"));
+
+        assert_eq!(
+            CaseInsensitiveUserStr::new("hello"),
+            CaseInsensitiveUserStr::new(r"h&
+            &eLLo"));
+    }
+}
+
 #[test]
 fn basic() {
     test("+ \n", vec![
@@ -63,7 +91,7 @@ fn operators() {
         ("                ~~~~                   ", LessThanOrEquals),
         ("                     ~~~~              ", GreaterThan),
         ("                          ~~~~         ", GreaterThanOrEquals),
-        ("                               ~~~~~~~~", DefinedOperator(FortranUserStr::new("CUSTOM"))),
+        ("                               ~~~~~~~~", DefinedOperator(CaseInsensitiveUserStr::new("CUSTOM"))),
     ]);
 }
 
@@ -76,7 +104,7 @@ fn operators_lowercase() {
         ("                ~~~~                   ", LessThanOrEquals),
         ("                     ~~~~              ", GreaterThan),
         ("                          ~~~~         ", GreaterThanOrEquals),
-        ("                               ~~~~~~~~", DefinedOperator(FortranUserStr::new("CUSTOM"))),
+        ("                               ~~~~~~~~", DefinedOperator(CaseInsensitiveUserStr::new("CUSTOM"))),
     ]);
 }
 
@@ -89,7 +117,7 @@ fn operators_camelcase() {
         ("                ~~~~                   ", LessThanOrEquals),
         ("                     ~~~~              ", GreaterThan),
         ("                          ~~~~         ", GreaterThanOrEquals),
-        ("                               ~~~~~~~~", DefinedOperator(FortranUserStr::new("CUSTOM"))),
+        ("                               ~~~~~~~~", DefinedOperator(CaseInsensitiveUserStr::new("CUSTOM"))),
     ]);
 }
 
@@ -132,15 +160,39 @@ fn logicals() {
 fn hello_world() {
     test(r#"PROGRAM hello; print *,"Hello, world!"; END PROGRAM hello"#, vec![
         (  "~~~~~~~                                                  ", Program),
-        (  "        ~~~~~                                            ", Id(FortranUserStr::new("hello"))),
+        (  "        ~~~~~                                            ", Id(CaseInsensitiveUserStr::new("hello"))),
         (  "             ~                                           ", SemiColon),
         (  "               ~~~~~                                     ", Print),
         (  "                     ~                                   ", Star),
         (  "                      ~                                  ", Comma),
-        (  "                       ~~~~~~~~~~~~~~~                   ", CharLiteralConstant("Hello, world!")),
+        (  "                       ~~~~~~~~~~~~~~~                   ", CharLiteralConstant(UserStr::new("Hello, world!"))),
         (  "                                      ~                  ", SemiColon),
         (  "                                        ~~~              ", End),
         (  "                                            ~~~~~~~      ", Program),
-        (  "                                                    ~~~~~", Id(FortranUserStr::new("hello"))),
+        (  "                                                    ~~~~~", Id(CaseInsensitiveUserStr::new("hello"))),
+    ]);
+}
+
+#[test]
+fn split_keywords() {
+    test(
+r#"&
+    pr&
+    &og&
+    &ram &
+    hel&
+    &lo"#, vec![
+(
+r#" 
+    ~~~
+~~~~~~~~
+~~~~~~~~"#, Program),
+(
+r#" 
+       
+        
+          
+    ~~~~
+~~~~~~~"#, Id(CaseInsensitiveUserStr::new("hello"))),
     ]);
 }

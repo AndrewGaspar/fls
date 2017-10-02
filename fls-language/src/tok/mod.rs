@@ -1,11 +1,14 @@
+use std::slice;
 use std::ascii::AsciiExt;
+use std::iter::Iterator;
 use std::str::CharIndices;
 
 use self::ErrorCode::*;
 use self::Tok::*;
+use self::TakeUntil::*;
 
 #[cfg(test)]
-mod test;
+mod tests;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Error {
@@ -18,6 +21,16 @@ pub enum ErrorCode {
     UnrecognizedToken,
     UnterminatedStringLiteral,
     UnterminatedOperator,
+    UnterminatedContinuationLine,
+    InvalidCarriageReturn,
+    UnexpectedToken,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum TakeUntil {
+    Continue,
+    Stop,
+    Error(ErrorCode),
 }
 
 fn error<T>(c: ErrorCode, l: usize) -> Result<T,Error> {
@@ -25,29 +38,87 @@ fn error<T>(c: ErrorCode, l: usize) -> Result<T,Error> {
 }
 
 #[derive(Clone, Debug)]
-pub struct FortranUserStr<'input> {
+pub struct UserStr<'input> {
     string: &'input str
 }
 
-impl<'input> FortranUserStr<'input> {
-    pub fn new(string: &'input str) -> FortranUserStr {
+impl<'input> UserStr<'input> {
+    pub fn new(string: &'input str) -> UserStr {
         debug_assert!(string.is_ascii());
 
-        FortranUserStr { string: string }
+        UserStr { string:  string }
     }
 
-    pub fn as_str(&self) -> &str {
-        self.string
-    }
-}
-
-impl<'input> PartialEq for FortranUserStr<'input> {
-    fn eq(&self, other: &FortranUserStr) -> bool {
-        self.as_str().eq_ignore_ascii_case(other.as_str())
+    pub fn iter(&self) -> UserStrIterator<'input> {
+        UserStrIterator::new(self.string.as_bytes().iter())
     }
 }
 
-impl<'input> Eq for FortranUserStr<'input> {}
+impl<'input> PartialEq for UserStr<'input> {
+    fn eq(&self, other: &UserStr) -> bool {
+        self.iter().eq(other.iter())
+    }
+}
+
+impl<'input> Eq for UserStr<'input> {}
+
+#[derive(Clone, Debug)]
+pub struct UserStrIterator<'input> {
+    str_iter: slice::Iter<'input, u8>,
+}
+
+impl<'input> UserStrIterator<'input> {
+    fn new(str_iter: slice::Iter<'input, u8>) -> UserStrIterator<'input> {
+        UserStrIterator { str_iter: str_iter }
+    }
+}
+
+// Iterator over a FortranUserStr. Ignores continuation. This allows us to
+// tokenize the FORTRAN program without allocating any memory.
+impl<'input> Iterator for UserStrIterator<'input> {
+    type Item = u8;
+
+    fn next(&mut self) -> Option<u8> {
+        // if we're here, we can assume that the string is already a
+        // valid identifier, which means the continuation is properly
+        // terminated. Just continue until we see a closing ampersand.
+        loop {
+            return match self.str_iter.next() {
+                Some(amp) if *amp == b'&' => {
+                    while b'&' != *self.str_iter.next().unwrap() {}
+                    continue;
+                }
+                Some(x) => Some(*x),
+                None => None,
+            }
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct CaseInsensitiveUserStr<'input> {
+    user_str: UserStr<'input>
+}
+
+impl<'input> CaseInsensitiveUserStr<'input> {
+    pub fn new(string: &'input str) -> CaseInsensitiveUserStr {
+        CaseInsensitiveUserStr { user_str: UserStr::new(string) }
+    }
+
+    pub fn iter(&self) -> UserStrIterator<'input> {
+        self.user_str.iter()
+    }
+}
+
+impl<'input> PartialEq for CaseInsensitiveUserStr<'input> {
+    fn eq(&self, other: &CaseInsensitiveUserStr) -> bool {
+        let to_lower = |c: u8| c.to_ascii_lowercase();
+
+        self.iter().map(&to_lower).eq(other.iter().map(&to_lower))
+    }
+}
+
+impl<'input> Eq for CaseInsensitiveUserStr<'input> {}
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Tok<'input> {
@@ -59,10 +130,10 @@ pub enum Tok<'input> {
     Print,
 
     // user strings
-    Id(FortranUserStr<'input>),
-    IntegerLiteralConstant(&'input str),
-    CharLiteralConstant(&'input str),
-    DefinedOperator(FortranUserStr<'input>),
+    Id(CaseInsensitiveUserStr<'input>),
+    IntegerLiteralConstant(UserStr<'input>),
+    CharLiteralConstant(UserStr<'input>),
+    DefinedOperator(CaseInsensitiveUserStr<'input>),
 
     // Symbols
     And,
@@ -137,57 +208,67 @@ impl<'input> Tokenizer<'input> {
     }
 
     fn operator(&mut self, idx0: usize) -> Result<Spanned<Tok<'input>>, Error> {
-        match self.take_while(is_operator_continue) {
-            Some(idx1) => {
-                match self.lookahead {
-                    Some((_, '.')) => {
-                        // consume .
-                        self.bump();
-
-                        // don't include . in operator name
-                        let operator = &self.text[idx0+1..idx1];
-
-                        let tok =
-                            INTRINSIC_OPERATORS
-                                .iter()
-                                .filter(|&&(w, _)| {
-                                    w.eq_ignore_ascii_case(operator)
-                                })
-                                .map(|&(_, ref t)| t.clone())
-                                .next()
-                                .unwrap_or_else(|| {
-                                    DefinedOperator(FortranUserStr::new(operator))
-                                });
-
-                        Ok((idx0, tok, idx1+1))
-                    }
-                    _ => error(UnterminatedOperator, idx0)
-                }
+        let terminate = |c: char| {
+            if is_operator_continue(c) {
+                Continue
+            } else if c == '.' {
+                Stop
+            } else {
+                Error(UnrecognizedToken)
             }
-            None => error(UnterminatedOperator, idx0)
+        };
+        
+        match self.take_until(idx0, terminate) {
+            Some(Ok(idx1)) => {
+                // consume .
+                self.bump();
+
+                // don't include . in operator name
+                let operator =
+                    CaseInsensitiveUserStr::new(&self.text[idx0+1..idx1]);
+
+                let tok =
+                    INTRINSIC_OPERATORS
+                        .iter()
+                        .filter(|&&(w, _)|
+                            CaseInsensitiveUserStr::new(w) == operator)
+                        .map(|&(_, ref t)| t.clone())
+                        .next()
+                        .unwrap_or_else(|| DefinedOperator(operator));
+
+                Ok((idx0, tok, idx1+1))
+            }
+            Some(Err(err)) => Err(err),
+            None => error(UnrecognizedToken, idx0),
         }
     }
 
     fn identifierish(&mut self, idx0: usize) -> Result<Spanned<Tok<'input>>, Error> {
-        let (start, word, end) = self.word(idx0);
+        let terminate = |c: char| {
+            if is_identifier_continue(c) {
+                Continue
+            } else {
+                Stop
+            }
+        };
+        
+        match self.take_until(idx0, terminate) {
+            Some(Ok(idx1)) => {
+                let word = CaseInsensitiveUserStr::new(&self.text[idx0..idx1]);
 
-        let tok =
-            KEYWORDS
-                .iter()
-                .filter(|&&(w, _)| w.eq_ignore_ascii_case(word))
-                .map(|&(_, ref t)| t.clone())
-                .next()
-                .unwrap_or_else(|| {
-                    Id(FortranUserStr::new(word))
-                });
+                let tok =
+                    KEYWORDS
+                        .iter()
+                        .filter(|&&(w, _)|
+                            CaseInsensitiveUserStr::new(w) == word)
+                        .map(|&(_, ref t)| t.clone())
+                        .next()
+                        .unwrap_or_else(|| Id(word));
 
-        Ok((start, tok, end))
-    }
-
-    fn word(&mut self, idx0: usize) -> Spanned<&'input str> {
-        match self.take_while(is_identifier_continue) {
-            Some(end) => (idx0, &self.text[idx0..end], end),
-            None => (idx0, &self.text[idx0..], self.text.len()),
+                Ok((idx0, tok, idx1))
+            }
+            Some(Err(err)) => Err(err),
+            None => error(UnrecognizedToken, idx0),
         }
     }
 
@@ -196,24 +277,133 @@ impl<'input> Tokenizer<'input> {
         let terminate = |c: char| {
             if escape {
                 escape = false;
-                false
+                Continue
             } else if c == '\\' {
                 escape = true;
-                false
+                Continue
             } else if c == quote {
-                true
+                Stop
+            } else if is_new_line_start(c) {
+                // string literals may not contain new lines
+                Error(UnterminatedStringLiteral)
             } else {
-                false
+                Continue
             }
         };
-        match self.take_until(terminate) {
-            Some(idx1) => {
+
+        match self.take_until(idx0, terminate) {
+            Some(Ok(idx1)) => {
                 self.bump(); // consume the closing quote
-                let text = &self.text[idx0+1..idx1]; // do not include quotes in the str
+                // do not include quotes in the str
+                let text = UserStr::new(&self.text[idx0+1..idx1]);
                 Ok((idx0, CharLiteralConstant(text), idx1+1))
             }
+            Some(Err(err)) => Err(err),
             None => error(UnterminatedStringLiteral, idx0)
         }
+    }
+
+    // expected that last seen character was '!'
+    // returns nothing - merely advances to end of comment.
+    fn commentary(&mut self) {
+        loop {
+            match self.lookahead {
+                Some((_, c)) if is_new_line_start(c) => return,
+                None => return,
+                Some(_) => {
+                    self.bump();
+                    continue
+                }
+            }
+        }
+    }
+
+    // call when you want to consume a new-line token. Test if at the start of
+    // a new line with is_new_line_start.
+    fn consume_new_line(&mut self) -> Option<Result<Spanned<Tok<'input>>, Error>> {
+        loop {
+            return match self.lookahead {
+                Some((idx0, '\n')) => {
+                    self.bump();
+                    Some(Ok((idx0, NewLine, idx0+1)))
+                }
+                Some((idx0, '\r')) => {
+                    match self.bump() {
+                        Some((_, '\n')) => {
+                            self.bump();
+                            Some(Ok((idx0, NewLine, idx0+2)))
+                        }
+                        // CR is not a supported line ending
+                        _ => Some(error(InvalidCarriageReturn, idx0)),
+                    }
+                },
+                Some((idx0, _)) => {
+                    // this function shouldn't have been called if not currently
+                    // at the start of a newline
+                    assert!(false); 
+                    Some(error(UnrecognizedToken, idx0))
+                }
+                None => None
+            }
+        }
+    }
+
+    fn continuation(&mut self, idx0: usize) -> Option<Result<(), Error>> {
+        let mut first_line = true;
+
+        loop {
+            return match self.lookahead {
+                Some((_, '!')) => {
+                    self.bump();
+                    self.commentary();
+                    continue
+                }
+                Some((_, c)) if is_new_line_start(c) => {
+                    first_line = false;
+                    match self.consume_new_line() {
+                        // propagate errors
+                        Some(Err(err)) => Some(Err(err)),
+                        // discard newline token inside of continuation.
+                        // EOF ends continuation
+                        Some(Ok(_)) | None => continue,
+                    }
+                }
+                Some((_, s)) if s.is_whitespace() => {
+                    self.bump();
+                    continue;
+                }
+                Some((idx1, _)) if first_line => {
+                    Some(error(UnexpectedToken, idx1))
+                }
+                // If an & is encountered, we're done processing the
+                // continuation. The caller should continue whatever
+                // tokenization process it was previously performing.
+                Some((_, '&')) => {
+                    self.bump();
+                    Some(Ok(()))
+                }
+                // If a new token is encountered, then the continuation has
+                // ended. The new character is a new token.
+                Some(_) => None,
+                None => Some(error(UnterminatedContinuationLine, idx0)),
+            }
+        }
+    }
+
+    // Can be called at any time during tokenization. Should be called at every
+    // character when consuming a multi-character token.
+    //
+    // Returns None if continuation is skipped without issue. Return Some(err)
+    // if there was an issue in the continuation.
+    fn skip_continuation(&mut self) -> Option<Error> {
+        if let Some((idx0, '&')) = self.lookahead {
+            self.bump();
+            if let Some(Err(err)) = self.continuation(idx0) {
+                return Some(err);
+            }
+        }
+
+        None
     }
 
     fn internal_next(&mut self) -> Option<Result<Spanned<Tok<'input>>, Error>> {
@@ -228,7 +418,13 @@ impl<'input> Tokenizer<'input> {
                     Some(Ok((idx0, Minus, idx0+1)))
                 }
                 Some((idx0, '*')) => {
-                    match self.bump() {
+                    self.bump();
+
+                    if let Some(err) = self.skip_continuation() {
+                        return Some(Err(err));
+                    }
+
+                    match self.lookahead {
                         Some((idx1, '*')) => {
                             self.bump();
                             Some(Ok((idx0, StarStar, idx1+1)))
@@ -238,7 +434,13 @@ impl<'input> Tokenizer<'input> {
                     }
                 }
                 Some((idx0, '/')) => {
-                    match self.bump() {
+                    self.bump();
+
+                    if let Some(err) = self.skip_continuation() {
+                        return Some(Err(err));
+                    }
+
+                    match self.lookahead {
                         Some((idx1, '/')) => {
                             self.bump();
                             Some(Ok((idx0, SlashSlash, idx1+1)))
@@ -267,27 +469,25 @@ impl<'input> Tokenizer<'input> {
                     self.bump();
                     Some(Ok((idx0, Comma, idx0+1)))
                 }
+                Some((_, '&')) => {
+                    if let Some(err) = self.skip_continuation() {
+                        return Some(Err(err));
+                    }
+
+                    continue
+                }
                 Some((idx0, c)) if (c == '"' || c == '\'') => {
                     self.bump();
                     Some(self.string_literal(idx0, c))
                 }
                 // Handle LF
-                Some((idx0, '\n')) => {
-                    self.bump();
-                    Some(Ok((idx0, NewLine, idx0+1)))
+                Some((_, c)) if is_new_line_start(c) => {
+                    self.consume_new_line()
                 }
-                // Handle CR+CRLF
-                Some((idx0, '\r')) => {
+                Some((_, '!')) => {
                     self.bump();
-                    match self.lookahead {
-                        // CRLF
-                        Some((_, '\n')) => {
-                            self.bump();
-                            Some(Ok((idx0, NewLine, idx0+2)))
-                        }
-                        // CR
-                        _ => Some(Ok((idx0, NewLine, idx0+1)))
-                    }
+                    self.commentary();
+                    continue
                 }
                 Some((idx0, c)) if is_identifier_start(c) => {
                     self.bump();
@@ -307,25 +507,29 @@ impl<'input> Tokenizer<'input> {
         }
     }
 
-    fn take_while<F>(&mut self, mut keep_going: F) -> Option<usize>
-        where F: FnMut(char) -> bool
-    {
-        self.take_until(|c| !keep_going(c))
-    }
-
-    fn take_until<F>(&mut self, mut terminate: F) -> Option<usize>
-        where F: FnMut(char) -> bool
+    fn take_until<F>(&mut self, idx0: usize, mut terminate: F) -> Option<Result<usize, Error>>
+        where F: FnMut(char) -> TakeUntil
     {
         loop {
-            match self.lookahead {
-                None => {
-                    return None;
+            return match self.lookahead {
+                None => None,
+                Some((_, '&')) => {
+                    if let Some(err) = self.skip_continuation() {
+                        return Some(Err(err));
+                    }
+
+                    continue
                 }
                 Some((idx1, c)) => {
-                    if terminate(c) {
-                        return Some(idx1);
-                    } else {
-                        self.bump();
+                    match terminate(c) {
+                        Continue => {
+                            match self.bump() {
+                                Some(_) => continue,
+                                None => Some(Ok(idx1+1))
+                            }
+                        }
+                        Stop => Some(Ok(idx1)),
+                        Error(err_code) => Some(error(err_code, idx0))
                     }
                 }
             }
@@ -359,3 +563,5 @@ fn is_identifier_start(c: char) -> bool {
 fn is_identifier_continue(c: char) -> bool {
     (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c == '_')
 }
+
+fn is_new_line_start(c: char) -> bool { c == '\r' || c == '\n' }
