@@ -91,9 +91,11 @@ PrintStmt: () = "PRINT" Format "," List<OutputItem> StmtSeparator;
 
 Format: () = {
     DefaultCharExpr,
-    // Label,
+    Label,
     "*"
 };
+
+Label: () = "DigitString";
 
 OutputItem: () = {
     Expr,
@@ -243,6 +245,7 @@ extern {
         "PRINT"          => Tok::Print,
         "Id"             => Tok::Id(<FortranUserStr<'input>>),
         "IntegerLiteral" => Tok::IntegerLiteralConstant(<&'input str>),
+        "DigitString"    => Tok::DigitString(<&'input str>),
         "CharLiteral"    => Tok::CharLiteralConstant(<&'input str>),
         "DefinedOp"      => Tok::DefinedOperation(<FortranUserStr<'input>>),
         ".AND."          => Tok::And,

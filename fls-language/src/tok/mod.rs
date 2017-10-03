@@ -6,6 +6,7 @@ use std::str::CharIndices;
 use self::ErrorCode::*;
 use self::Tok::*;
 use self::TakeUntil::*;
+use self::Lookahead::*;
 
 #[cfg(test)]
 mod tests;
@@ -31,6 +32,12 @@ enum TakeUntil {
     Continue,
     Stop,
     Error(ErrorCode),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum Lookahead {
+    Character(char),
+    EOF
 }
 
 fn error<T>(c: ErrorCode, l: usize) -> Result<T, Error> {
@@ -136,6 +143,7 @@ pub enum Tok<'input> {
     Id(CaseInsensitiveUserStr<'input>),
     IntegerLiteralConstant(UserStr<'input>),
     CharLiteralConstant(UserStr<'input>),
+    DigitString(UserStr<'input>),
     DefinedOperator(CaseInsensitiveUserStr<'input>),
 
     // Symbols
@@ -208,13 +216,12 @@ impl<'input> Tokenizer<'input> {
     }
 
     fn operator(&mut self, idx0: usize) -> Result<Spanned<Tok<'input>>, Error> {
-        let terminate = |c: char| if is_operator_continue(c) {
-            Continue
-        } else if c == '.' {
-            Stop
-        } else {
-            Error(UnrecognizedToken)
-        };
+        let terminate = |lookahead: Lookahead|
+            match lookahead {
+                Character(c) if is_operator_continue(c) => Continue,
+                Character('.') => Stop,
+                _ => Error(UnrecognizedToken),
+            };
 
         match self.take_until(idx0, terminate) {
             Some(Ok(idx1)) => {
@@ -239,11 +246,11 @@ impl<'input> Tokenizer<'input> {
     }
 
     fn identifierish(&mut self, idx0: usize) -> Result<Spanned<Tok<'input>>, Error> {
-        let terminate = |c: char| if is_identifier_continue(c) {
-            Continue
-        } else {
-            Stop
-        };
+        let terminate = |lookahead: Lookahead|
+            match lookahead {
+                Character(c) if is_identifier_continue(c) => Continue,
+                _ => Stop,
+            };
 
         match self.take_until(idx0, terminate) {
             Some(Ok(idx1)) => {
@@ -265,20 +272,22 @@ impl<'input> Tokenizer<'input> {
 
     fn string_literal(&mut self, idx0: usize, quote: char) -> Result<Spanned<Tok<'input>>, Error> {
         let mut escape = false;
-        let terminate = |c: char| {
+        let terminate = |lookahead: Lookahead| {
             if escape {
                 escape = false;
                 Continue
-            } else if c == '\\' {
-                escape = true;
-                Continue
-            } else if c == quote {
-                Stop
-            } else if is_new_line_start(c) {
-                // string literals may not contain new lines
-                Error(UnterminatedStringLiteral)
             } else {
-                Continue
+                match lookahead {
+                    Character('\\') => {
+                        escape = true;
+                        Continue
+                    }
+                    Character(c) if c == quote => Stop,
+                    Character(c) if is_new_line_start(c) =>
+                        Error(UnterminatedStringLiteral),
+                    Character(_) => Continue,
+                    EOF => Error(UnterminatedStringLiteral),
+                }
             }
         };
 
@@ -288,6 +297,22 @@ impl<'input> Tokenizer<'input> {
                 // do not include quotes in the str
                 let text = UserStr::new(&self.text[idx0 + 1..idx1]);
                 Ok((idx0, CharLiteralConstant(text), idx1 + 1))
+            }
+            Some(Err(err)) => Err(err),
+            None => error(UnterminatedStringLiteral, idx0),
+        }
+    }
+
+    fn digit_string(&mut self, idx0: usize) -> Result<Spanned<Tok<'input>>, Error> {
+        let terminate = |lookahead: Lookahead|
+            match lookahead {
+                Character(c) if is_digit(c) => Continue,
+                _ => Stop,
+            };
+
+        match self.take_until(idx0, terminate) {
+            Some(Ok(idx1)) => {
+                Ok((idx0, DigitString(UserStr::new(&self.text[idx0..idx1])), idx1 + 1))
             }
             Some(Err(err)) => Err(err),
             None => error(UnterminatedStringLiteral, idx0),
@@ -467,6 +492,10 @@ impl<'input> Tokenizer<'input> {
                     self.bump();
                     Some(self.string_literal(idx0, c))
                 }
+                Some ((idx0, c)) if is_digit(c) => {
+                    self.bump();
+                    Some(self.digit_string(idx0))
+                }
                 // Handle LF
                 Some((_, c)) if is_new_line_start(c) => self.consume_new_line(),
                 Some((_, '!')) => {
@@ -490,11 +519,11 @@ impl<'input> Tokenizer<'input> {
 
     fn take_until<F>(&mut self, idx0: usize, mut terminate: F) -> Option<Result<usize, Error>>
     where
-        F: FnMut(char) -> TakeUntil,
+        F: FnMut(Lookahead) -> TakeUntil,
     {
+        let mut last_idx = idx0;
         loop {
             return match self.lookahead {
-                None => None,
                 Some((_, '&')) => {
                     if let Some(err) = self.skip_continuation() {
                         return Some(Err(err));
@@ -502,13 +531,22 @@ impl<'input> Tokenizer<'input> {
 
                     continue;
                 }
-                Some((idx1, c)) => {
-                    match terminate(c) {
+                None => {
+                    match terminate(EOF) {
                         Continue => {
-                            match self.bump() {
-                                Some(_) => continue,
-                                None => Some(Ok(idx1 + 1)),
-                            }
+                            debug_assert!(false);
+                            Some(Ok(last_idx + 1))
+                        }
+                        Stop => Some(Ok(last_idx + 1)),
+                        Error(err_code) => Some(error(err_code, idx0)),
+                    }
+                }
+                Some((idx1, c)) => {
+                    match terminate(Character(c)) {
+                        Continue => {
+                            self.bump();
+                            last_idx = idx1;
+                            continue;
                         }
                         Stop => Some(Ok(idx1)),
                         Error(err_code) => Some(error(err_code, idx0)),
@@ -548,4 +586,8 @@ fn is_identifier_continue(c: char) -> bool {
 
 fn is_new_line_start(c: char) -> bool {
     c == '\r' || c == '\n'
+}
+
+fn is_digit(c: char) -> bool {
+    c >= '0' && c <= '9'
 }
