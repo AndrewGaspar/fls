@@ -1,29 +1,32 @@
-grammar;
-    
-use types;
-use lexer::Tok;
-use std::str::FromStr;
+grammar<'input>;
+
+use parser::types;    
+use tok::{Tok, Error, CaseInsensitiveUserStr, UserStr};
 
 pub Program: types::Program =
-    Stmts<ProgramUnit> => types::Program::new(<>);
+    StmtSeparator? <programs_units: Stmts<ProgramUnit>> =>
+        types::Program::new(programs_units);
 
 ProgramUnit: types::ProgramUnit = {
     MainProgram,
 };
 
 MainProgram: types::ProgramUnit = {
-    <stmt:ProgramStmt?> SpecificationPart? ExecutionPart? InternalSubprogramPart? <end:EndProgram> =>
+    <stmt:ProgramStmt?> SpecificationPart? ExecutionPart? InternalSubprogramPart? <end:EndProgramStmt> =>
         types::ProgramUnit::new(stmt, end)
 };
 
 ProgramStmt: String = {
-    "PROGRAM" <name:"Id"> StmtSeparator => name
+    "PROGRAM" <name:"Id"> StmtSeparator => name.as_string()
+};
+
+EndProgramStmt: Option<String> = {
+    <program: EndProgram> StmtSeparator => program
 };
 
 EndProgram: Option<String> = {
-    "END" "PROGRAM" <name:"Id"> => Some(name),
-    "END" "PROGRAM"             => None,
-    "END"                       => None,
+    "END" "PROGRAM" <name:"Id"> => Some(name.as_string()),
+    "END" "PROGRAM"?            => None,
 };
 
 SpecificationPart: () = {};
@@ -209,7 +212,7 @@ LiteralConstant: () = {
 };
 
 Stmts<T>: Vec<T> = {
-    <v:(<T> StmtSeparator+)*> <e:T?> => match e {
+    <v:(<T> StmtSeparator)*> <e:T?> => match e {
         None=> v,
         Some(e) => {
             let mut v = v;
@@ -230,24 +233,21 @@ List<T>: Vec<T> = {
     }
 };
 
-StmtSeparator: () = {
-    ";",
-    "\n",
-};
+StmtSeparator: () = "EOS";
 
 extern {
     type Location = usize;
-    type Error = lexer::Error;
+    type Error = Error;
 
     enum Tok<'input> {
         "PROGRAM"        => Tok::Program,
         "END"            => Tok::End,
         "PRINT"          => Tok::Print,
-        "Id"             => Tok::Id(<FortranUserStr<'input>>),
-        "IntegerLiteral" => Tok::IntegerLiteralConstant(<&'input str>),
-        "DigitString"    => Tok::DigitString(<&'input str>),
-        "CharLiteral"    => Tok::CharLiteralConstant(<&'input str>),
-        "DefinedOp"      => Tok::DefinedOperation(<FortranUserStr<'input>>),
+        "Id"             => Tok::Id(<CaseInsensitiveUserStr<'input>>),
+        "IntegerLiteral" => Tok::IntegerLiteralConstant(<UserStr<'input>>),
+        "DigitString"    => Tok::DigitString(<UserStr<'input>>),
+        "CharLiteral"    => Tok::CharLiteralConstant(<UserStr<'input>>),
+        "DefinedOp"      => Tok::DefinedOperator(<CaseInsensitiveUserStr<'input>>),
         ".AND."          => Tok::And,
         ".EQV."          => Tok::Equivalent,
         ".NEQV."         => Tok::NotEquivalent,
@@ -265,8 +265,7 @@ extern {
         "*"              => Tok::Star,
         "/"              => Tok::Slash,
         "**"             => Tok::StarStar,
-        "\n"             => Tok::NewLine,
-        ";"              => Tok::SemiColon,
+        "EOS"            => Tok::EOS,
         ","              => Tok::Comma,
         "("              => Tok::LeftParen,
         ")"              => Tok::RightParen,

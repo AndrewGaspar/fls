@@ -1,6 +1,6 @@
 use std::slice;
 use std::ascii::AsciiExt;
-use std::iter::Iterator;
+use std::iter::{FromIterator, Iterator};
 use std::str::CharIndices;
 
 use self::ErrorCode::*;
@@ -62,6 +62,10 @@ impl<'input> UserStr<'input> {
     pub fn iter(&self) -> UserStrIterator<'input> {
         UserStrIterator::new(self.string.as_bytes().iter())
     }
+
+    pub fn as_string(&self) -> String {
+        String::from_iter(self.iter().map(|c| c as char))
+    }
 }
 
 impl<'input> PartialEq for UserStr<'input> {
@@ -118,6 +122,10 @@ impl<'input> CaseInsensitiveUserStr<'input> {
     pub fn iter(&self) -> UserStrIterator<'input> {
         self.user_str.iter()
     }
+
+    pub fn as_string(&self) -> String {
+        String::from_iter(self.iter().map(|c| c as char))
+    }
 }
 
 impl<'input> PartialEq for CaseInsensitiveUserStr<'input> {
@@ -169,8 +177,7 @@ pub enum Tok<'input> {
     StarStar,
 
     // structure
-    NewLine,
-    SemiColon,
+    EOS,
     Comma,
 
     LeftParen,
@@ -181,6 +188,9 @@ pub struct Tokenizer<'input> {
     text: &'input str,
     chars: CharIndices<'input>,
     lookahead: Option<(usize, char)>,
+    is_start: bool,
+    is_end: bool,
+    last_token: Option<Result<Spanned<Tok<'input>>, Error>>,
 }
 
 pub type Spanned<T> = (usize, T, usize);
@@ -210,6 +220,9 @@ impl<'input> Tokenizer<'input> {
             text: text,
             chars: text.char_indices(),
             lookahead: None,
+            is_start: true,
+            is_end: false,
+            last_token: None,
         };
         t.bump();
         t
@@ -220,7 +233,7 @@ impl<'input> Tokenizer<'input> {
             match lookahead {
                 Character(c) if is_operator_continue(c) => Continue,
                 Character('.') => Stop,
-                _ => Error(UnrecognizedToken),
+                _ => Error(UnterminatedOperator),
             };
 
         match self.take_until(idx0, terminate) {
@@ -241,7 +254,7 @@ impl<'input> Tokenizer<'input> {
                 Ok((idx0, tok, idx1 + 1))
             }
             Some(Err(err)) => Err(err),
-            None => error(UnrecognizedToken, idx0),
+            None => error(UnterminatedOperator, idx0),
         }
     }
 
@@ -341,13 +354,13 @@ impl<'input> Tokenizer<'input> {
             return match self.lookahead {
                 Some((idx0, '\n')) => {
                     self.bump();
-                    Some(Ok((idx0, NewLine, idx0 + 1)))
+                    Some(Ok((idx0, EOS, idx0 + 1)))
                 }
                 Some((idx0, '\r')) => {
                     match self.bump() {
                         Some((_, '\n')) => {
                             self.bump();
-                            Some(Ok((idx0, NewLine, idx0 + 2)))
+                            Some(Ok((idx0, EOS, idx0 + 2)))
                         }
                         // CR is not a supported line ending
                         _ => Some(error(InvalidCarriageReturn, idx0)),
@@ -473,13 +486,16 @@ impl<'input> Tokenizer<'input> {
                     self.bump();
                     Some(self.operator(idx0))
                 }
-                Some((idx0, ';')) => {
-                    self.bump();
-                    Some(Ok((idx0, SemiColon, idx0 + 1)))
-                }
                 Some((idx0, ',')) => {
                     self.bump();
                     Some(Ok((idx0, Comma, idx0 + 1)))
+                }
+                Some((_, c)) if is_new_line_start(c) => {
+                    self.consume_new_line()
+                }
+                Some((idx0, ';')) => {
+                    self.bump();
+                    Some(Ok((idx0, EOS, idx0+1)))
                 }
                 Some((_, '&')) => {
                     if let Some(err) = self.skip_continuation() {
@@ -496,8 +512,6 @@ impl<'input> Tokenizer<'input> {
                     self.bump();
                     Some(self.digit_string(idx0))
                 }
-                // Handle LF
-                Some((_, c)) if is_new_line_start(c) => self.consume_new_line(),
                 Some((_, '!')) => {
                     self.bump();
                     self.commentary();
@@ -566,7 +580,34 @@ impl<'input> Iterator for Tokenizer<'input> {
     type Item = Result<Spanned<Tok<'input>>, Error>;
 
     fn next(&mut self) -> Option<Result<Spanned<Tok<'input>>, Error>> {
-        self.internal_next()
+        loop {
+            if self.is_end {
+                return None;
+            }
+
+            let mut next_token = self.internal_next();
+
+            // reached EOF - change to is_end state and return an EOS.
+            if next_token.is_none() {
+                self.is_end = true;
+                next_token = Some(Ok((0, EOS, 0)));
+            }
+
+            if let Some(Ok((_, EOS, _))) = next_token {
+                if self.is_start {
+                    continue;
+                }
+
+                if let Some(Ok((_, EOS, _))) = self.last_token {
+                    continue;
+                }
+            }
+
+            self.is_start = false;
+            self.last_token = next_token.clone();
+            
+            return next_token;
+        }
     }
 }
 

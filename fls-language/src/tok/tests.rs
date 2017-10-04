@@ -35,8 +35,13 @@ fn gen_test(input: &str, expected: Vec<(&str, Expectation)>) {
         }
     }
 
+    // The string should end either with a 
     let tokenizer = Tokenizer::new(&input);
-    assert_eq!(None, tokenizer.skip(len).next());
+    match tokenizer.skip(len).next() {
+        a @ Some(_) =>
+            assert_eq!(Some(Ok((0, EOS, 0))), a),
+        x => assert_eq!(None, x),
+    }
 }
 
 fn test(input: &str, expected: Vec<(&str, Tok)>) {
@@ -91,16 +96,24 @@ mod fortran_user_string {
 #[cfg_attr(rustfmt, rustfmt_skip)]
 mod tokenizer_tests {
 
-use super::test;
+use super::{test, test_err};
 use super::{CaseInsensitiveUserStr, UserStr};
 use super::Tok::*;
+use super::ErrorCode::*;
 
 #[test]
 fn basic() {
-    test("+ \n", vec![
+    test("+ $", vec![
         ("~  ", Plus),
-        ("  ~", NewLine)
+        ("  ~", EOS)
     ]);
+}
+
+#[test]
+fn error() {
+    test_err(".NO", 
+            ("~  ", UnterminatedOperator)
+    );
 }
 
 #[test]
@@ -182,12 +195,12 @@ fn hello_world() {
     test(r#"PROGRAM hello; print *,"Hello, world!"; END PROGRAM hello"#, vec![
         (  "~~~~~~~                                                  ", Program),
         (  "        ~~~~~                                            ", Id(CaseInsensitiveUserStr::new("hello"))),
-        (  "             ~                                           ", SemiColon),
+        (  "             ~                                           ", EOS),
         (  "               ~~~~~                                     ", Print),
         (  "                     ~                                   ", Star),
         (  "                      ~                                  ", Comma),
         (  "                       ~~~~~~~~~~~~~~~                   ", CharLiteralConstant(UserStr::new("Hello, world!"))),
-        (  "                                      ~                  ", SemiColon),
+        (  "                                      ~                  ", EOS),
         (  "                                        ~~~              ", End),
         (  "                                            ~~~~~~~      ", Program),
         (  "                                                    ~~~~~", Id(CaseInsensitiveUserStr::new("hello"))),
@@ -196,25 +209,9 @@ fn hello_world() {
 
 #[test]
 fn split_keywords() {
-    test(
-r#"&
-    pr&
-    &og&
-    &ram &
-    hel&
-    &lo"#, vec![
-(
-r#" 
-    ~~~
-~~~~~~~~
-~~~~~~~~"#, Program),
-(
-r#" 
-       
-        
-          
-    ~~~~
-~~~~~~~"#, Id(CaseInsensitiveUserStr::new("hello"))),
+    test("&$pr&$    &og&$    &ram &$    hel&$    &lo", vec![
+        ("  ~~~~~~~~~~~~~~~~~~~~~                   ", Program),
+        ("                              ~~~~~~~~~~~~", Id(CaseInsensitiveUserStr::new("hello"))),
     ]);
 }
 
