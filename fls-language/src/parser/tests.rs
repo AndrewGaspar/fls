@@ -25,3 +25,14 @@ fn hello_world() {
     let ref program = &program.units[0];
     assert_eq!("hello", program.begin_name.as_ref().unwrap());
 }
+
+#[test]
+fn addition() {
+    let program = include_str!("programs/addition.f90");
+
+    let tokenizer = tok::Tokenizer::new(program);
+
+    let program = fortran::parse_Program(tokenizer).unwrap();
+
+    assert_eq!(1, program.units.len());
+}

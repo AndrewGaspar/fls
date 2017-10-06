@@ -160,8 +160,8 @@ pub enum Tok<'input> {
     NotEquivalent,
     Not,
     Or,
-    Equals,
-    NotEquals,
+    EqualsOp,
+    NotEqualsOp,
     LessThan,
     LessThanOrEquals,
     GreaterThan,
@@ -169,12 +169,16 @@ pub enum Tok<'input> {
     True,
     False,
 
+    Arrow,
+    Equals,
     Plus,
     Minus,
     Slash,
     SlashSlash,
     Star,
     StarStar,
+    Colon,
+    ColonColon,
 
     // structure
     EOS,
@@ -182,6 +186,51 @@ pub enum Tok<'input> {
 
     LeftParen,
     RightParen,
+    LeftBracket,
+    RightBracket,
+
+    // Types
+    Real,
+    Double,
+    Precision,
+    Complex,
+    Character,
+    Logical,
+    Integer,
+    Percent,
+    Kind,
+
+    // Attributes
+    Allocatable,
+    Asynchronous,
+    Codimension,
+    Contiguous,
+    Dimension,
+    External,
+    Intent,
+    Intrinsic,
+    Optional,
+    Parameter,
+    Pointer,
+    Protected,
+    Save,
+    Target,
+    Value,
+    Volatile,
+
+    // Access
+    Public,
+    Private,
+
+    // LanguageBinding
+    Bind,
+    C,
+    Name,
+
+    // Intent
+    In,
+    Out,
+    Inout,
 }
 
 pub struct Tokenizer<'input> {
@@ -195,23 +244,58 @@ pub struct Tokenizer<'input> {
 
 pub type Spanned<T> = (usize, T, usize);
 
-const KEYWORDS: &'static [(&'static str, Tok<'static>)] =
-    &[("PROGRAM", Program), ("END", End), ("PRINT", Print)];
+const KEYWORDS: &'static [(&'static str, Tok<'static>)] = &[
+    ("ALLOCATABLE",  Allocatable),
+    ("ASYNCHRONOUS", Asynchronous),
+    ("BIND",         Bind),
+    ("C",            C),
+    ("CHARACTER",    Character),
+    ("CODIMENSION",  Codimension),
+    ("COMPLEX",      Complex),
+    ("CONTIGUOUS",   Contiguous),
+    ("DIMENSION",    Dimension),
+    ("DOUBLE",       Double),
+    ("END",          End),
+    ("EXTERNAL",     External),
+    ("IN",           In),
+    ("INOUT",        Inout),
+    ("INTEGER",      Integer),
+    ("INTENT",       Intent),
+    ("INTRINSIC",    Intrinsic),
+    ("KIND",         Kind),
+    ("LOGICAL",      Logical),
+    ("NAME",         Name),
+    ("OPTIONAL",     Optional),
+    ("OUT",          Out),
+    ("PARAMETER",    Parameter),
+    ("POINTER",      Pointer),
+    ("PRECISION",    Precision),
+    ("PRINT",        Print)
+    ("PRIVATE",      Private),
+    ("PROGRAM",      Program),
+    ("PROTECTED",    Protected),
+    ("PUBLIC",       Public),
+    ("REAL",         Real),
+    ("SAVE",         Save),
+    ("TARGET",       Target),
+    ("VALUE",        Value),
+    ("VOLATILE",     Volatile),
+];
 
 const INTRINSIC_OPERATORS: &'static [(&'static str, Tok<'static>)] = &[
-    ("AND", And),
-    ("EQV", Equivalent),
-    ("NEQV", NotEquivalent),
-    ("NOT", Not),
-    ("OR", Or),
-    ("EQ", Equals),
-    ("NE", NotEquals),
-    ("LT", LessThan),
-    ("LE", LessThanOrEquals),
-    ("GT", GreaterThan),
-    ("GE", GreaterThanOrEquals),
-    ("TRUE", True),
-    ("FALSE", False),
+    ("AND",          And),
+    ("EQ",           EqualsOp),
+    ("EQV",          Equivalent),
+    ("FALSE",        False),
+    ("GE",           GreaterThanOrEquals),
+    ("GT",           GreaterThan),
+    ("LE",           LessThanOrEquals),
+    ("LT",           LessThan),
+    ("NE",           NotEqualsOp),
+    ("NEQV",         NotEquivalent),
+    ("NOT",          Not),
+    ("OR",           Or),
+    ("TRUE",         True),
 ];
 
 impl<'input> Tokenizer<'input> {
@@ -436,6 +520,21 @@ impl<'input> Tokenizer<'input> {
     fn internal_next(&mut self) -> Option<Result<Spanned<Tok<'input>>, Error>> {
         loop {
             return match self.lookahead {
+                Some((idx0, '=')) => {
+                    self.bump();
+
+                    if let Some(err) = self.skip_continuation() {
+                        return Some(Err(err));
+                    }
+
+                    match self.lookahead {
+                        Some((idx1, '>')) => {
+                            self.bump();
+                            Some(Ok((idx0, Arrow, idx1+1)))
+                        }
+                        _ => Some(Ok((idx0, Equals, idx0+1)))
+                    }
+                }
                 Some((idx0, '+')) => {
                     self.bump();
                     Some(Ok((idx0, Plus, idx0 + 1)))
@@ -474,6 +573,10 @@ impl<'input> Tokenizer<'input> {
                         _ => Some(Ok((idx0, Slash, idx0 + 1))),
                     }
                 }
+                Some((idx0, '%')) => {
+                    self.bump();
+                    Some(Ok((idx0, Percent, idx0 + 1)))
+                }
                 Some((idx0, '(')) => {
                     self.bump();
                     Some(Ok((idx0, LeftParen, idx0 + 1)))
@@ -481,6 +584,14 @@ impl<'input> Tokenizer<'input> {
                 Some((idx0, ')')) => {
                     self.bump();
                     Some(Ok((idx0, RightParen, idx0 + 1)))
+                }
+                Some((idx0, '[')) => {
+                    self.bump();
+                    Some(Ok((idx0, LeftBracket, idx0 + 1)))
+                }
+                Some((idx0, ']')) => {
+                    self.bump();
+                    Some(Ok((idx0, RightBracket, idx0 + 1)))
                 }
                 Some((idx0, '.')) => {
                     self.bump();
@@ -492,6 +603,21 @@ impl<'input> Tokenizer<'input> {
                 }
                 Some((_, c)) if is_new_line_start(c) => {
                     self.consume_new_line()
+                }
+                Some((idx0, ':')) => {
+                    self.bump();
+
+                    if let Some(err) = self.skip_continuation() {
+                        return Some(Err(err));
+                    }
+
+                    match self.lookahead {
+                        Some((idx1, ':')) => {
+                            self.bump();
+                            Some(Ok((idx0, ColonColon, idx1 + 1)))
+                        }
+                        _ => Some(Ok((idx0, Colon, idx0 + 1))),
+                    }
                 }
                 Some((idx0, ';')) => {
                     self.bump();
