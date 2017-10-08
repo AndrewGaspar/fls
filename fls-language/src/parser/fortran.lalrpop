@@ -35,7 +35,8 @@ EndProgram: Option<String> = {
 
 // R204
 SpecificationPart: () = {
-    UseStmt* ImportStmt* ImplicitPart? DeclarationConstruct*
+    // UseStmt* ImportStmt* ImplicitPart? DeclarationConstruct*,
+    DeclarationConstruct*,
 };
 
 // R205
@@ -63,7 +64,7 @@ SpecificationConstruct: () = {
 };
 
 // R216
-Keyword: () = "Id";
+Keyword = "Id";
 
 // R403
 DeclarationTypeSpec: () = {
@@ -81,8 +82,8 @@ IntrinsicTypeSpec: () = {
     "REAL" KindSelector?,
     "DOUBLE" "PRECISION",
     "COMPLEX" KindSelector?,
-    "CHARACTER" CharSelector?,
-    "LOGICAL" KindSelector?
+    // "CHARACTER" CharSelector?,
+    "LOGICAL" KindSelector?,
 };
 
 // R405
@@ -92,24 +93,24 @@ IntegerTypeSpec: () = "INTEGER" KindSelector?;
 KindSelector: () = ("KIND" "=")? IntConstantExpr;
 
 // R421
-CharSelector: () = {
+// CharSelector: () = {
     // LengthSelector,
     // "(" "LEN" "=" TypeParamValue "," "KIND" "=" IntConstantExpr ")",
     // "(" TypeParamValue "," ("KIND" "=")? IntConstantExpr ")",
     // "(" "KIND" "=" IntConstantExpr ("," "LEN" "=" TypeParamValue)? ")",
-};
+// };
 
 // R422
-LengthSelector: () = {
+// LengthSelector: () = {
     // "(" ("LEN" "=")? TypeParamValue ")",
     // "*" CharLength ","?
-};
+// };
 
 // R423
-CharLength: () = {
+// CharLength: () = {
     // "(" TypeParamValue ")",
     // IntLiteralConstant,
-};
+// };
 
 // R444
 InitialDataTarget: () = Designator;
@@ -124,9 +125,9 @@ AttrSpec: () = {
     AccessSpec,
     "ALLOCATABLE",
     "ASYNCHRONOUS",
-    "CODIMENSION" "[" CoarraySpec "]",
+    // "CODIMENSION" "[" CoarraySpec "]",
     "CONTIGUOUS",
-    "DIMENSION" "(" ArraySpec ")",
+    // "DIMENSION" "(" ArraySpec ")",
     "EXTERNAL",
     "INTENT" "(" IntentSpec ")",
     "INTRINSIC",
@@ -143,8 +144,8 @@ AttrSpec: () = {
 
 // R503
 EntityDecl: () = {
-    ObjectName ("(" ArraySpec ")")? ( "[" CoarraySpec "]")? ("*" CharLength)?
-        Initialization?
+    // ObjectName ("(" ArraySpec ")")? ("[" CoarraySpec "]")? ("*" CharLength)? Initialization?,
+    ObjectName Initialization?,
 };
 
 // R504
@@ -158,7 +159,7 @@ Initialization: () = {
 };
 
 // R506
-NullInit: () = FunctionReference;
+NullInit: () = "Id" "(" ")";
 
 // R507
 AccessSpec: () = {
@@ -172,13 +173,13 @@ LanguageBindingSpec: () = {
 };
 
 // R509
-CoarraySpec: () = {
+// CoarraySpec: () = {
     // List<DeferredCoshapeSpec>,
     // ExplicitCoshapeSpec,
-};
+// };
 
 // R515
-ArraySpec: () = {
+// ArraySpec: () = {
     // List<ExplicitShapeSpec>,
     // List<AssumedShapeSpec>,
     // List<DeferredShapeSpec>,
@@ -186,7 +187,7 @@ ArraySpec: () = {
     // ImpliedShapeSpec,
     // ImpliedShapeOrAssumedSizeSpec,
     // AssumedRankSpec,
-};
+// };
 
 // R526
 IntentSpec: () = {
@@ -198,7 +199,7 @@ IntentSpec: () = {
 // R601
 Designator: () = {
     ObjectName,
-    ArrayElement,
+    // ArrayElement,
     // ArraySection,
     // CoindexedNamedObject,
     // ComplexPartDesignator,
@@ -207,18 +208,54 @@ Designator: () = {
 };
 
 // R602
-Variable: () = {
-    Designator,
-    FunctionReference,
-};
+Variable = DesignatorOrFunctionReference;
+
+// R10
+SubstringRange = IntExpr? ":" IntExpr?;
 
 // R611
-DataRef: () = {
-    // PartRef ("%" PartRef)*,
-};
+DataRef = PartRef ("%" PartRef)*;
+
+// R612
+PartRef = PartName ("(" List<SectionSubscript> ")")?;
+//PartRef = PartName ("(" List<SectionSubscript> ")")? ImageSelector?;
+
+// part-name
+PartName = "Id";
 
 // R617
-ArrayElement: () = DataRef;
+ArrayElement = DataRef;
+
+// R619
+Subscript = IntExpr;
+
+// R620
+SectionSubscript: () = {
+    Subscript,
+    SubscriptTriplet,
+    VectorSubscript,
+};
+
+// R621
+SubscriptTriplet = Subscript? ":" Subscript? (":"  Stride)?;
+
+// R622
+// stride IS scalar-int-expr
+Stride = IntExpr;
+
+// R623
+VectorSubscript = IntExpr;
+
+// R701
+Primary: () = {
+    Constant,
+    DesignatorOrFunctionReference,
+    // ArrayConstructor,
+    // StructureConstructor,
+    // TypeParamInquiry,
+    // TypeParamName,
+    "(" Expr ")"
+};
 
 // R725
 DefaultCharExpr: () = Expr;
@@ -236,13 +273,67 @@ DefaultCharConstantExpr: () = DefaultCharExpr;
 IntConstantExpr: () = IntExpr;
 
 // R1109
-UseStmt: () = {};
+// UseStmt: () = {
+//     "USE" (("," ModuleNature)? "::")? ModuleName ("," List<Rename>)?,
+//     "USE" (("," ModuleNature)? "::")? ModuleName "," "ONLY" ":" List<Only>,
+// };
+
+// ModuleName = "Id";
+
+// // R1110
+// ModuleNature: () = {
+//     "INTRINSIC",
+//     "NON_INTRINSIC",
+// };
+
+// // R1111
+// Rename: () = {
+//     LocalName "=>" UseName,
+//     "OPERATOR" LocalDefinedOperator "=>" "OPERATOR" UseDefinedOperator,
+// };
+
+// LocalName = "Id";
+// UseName = "Id";
+
+// // R1112
+// Only: () = {
+//     GenericSpec,
+//     OnlyUseName,
+//     Rename,
+// };
+
+// OnlyUseName = "Id";
+
+// R1114
+// LocalDefinedOperator: () = "DefinedOp";
+
+// // R1115
+// UseDefinedOperator: () = "DefinedOp";
 
 // R1211
-ImportStmt: () = {};
+// ImportStmt: () = {};
 
 // R1221
-FunctionReference: () = ProcedureDesignator "(" List<ActualArgSpec> ")";
+// 'function-reference' is ambiguous with a designator (e.g. an array element
+// looks the same as a function call)
+DesignatorOrFunctionReference: () = {
+    DataRef ("(" SubstringRangeOrArgList ")")?,
+    "CharLiteral" "(" SubstringRange ")",
+};
+
+SubstringRangeOrArgList: () = {
+    ":" Expr?,
+    Expr SubstringRangeOrArgListSuffix,
+    "Id" "=" Expr ("," ActualArgSpec)*,
+    ("Id" "=" Keyword)? "*" Label ("," ActualArgSpec)*,
+};
+
+SubstringRangeOrArgListSuffix: () = {
+    ":" Expr?,
+    ("," ActualArgSpec)*,
+};
+
+// FunctionReference: () = ProcedureDesignator "(" List<ActualArgSpec> ")";
 
 // R1223
 ProcedureDesignator: () = {
@@ -255,7 +346,7 @@ BindingName: () = "Id";
 ProcedureName: () = "Id";
 
 // R1224
-ActualArgSpec: () = (Keyword "=")? ActualArg;
+ActualArgSpec = (Keyword "=")? ActualArg;
 
 // R1225
 ActualArg: () = {
@@ -334,7 +425,7 @@ Format: () = {
     "*"
 };
 
-Label: () = "DigitString";
+Label = "DigitString";
 
 OutputItem: () = {
     Expr,
@@ -420,17 +511,6 @@ MultOp: () = {
     "/"
 };
 
-Primary: () = {
-    Constant,
-    // Designator,
-    // ArrayConstructor,
-    // StructureConstructor,
-    // FunctionReference,
-    // TypeParamInquiry,
-    // TypeParamName,
-    "(" Expr ")"
-};
-
 Constant: () = {
     LiteralConstant,
     // NamedConstant,
@@ -447,7 +527,7 @@ LiteralConstant: () = {
 
 Stmts<T>: Vec<T> = {
     <v:(<T> ";")*> <e:T?> => match e {
-        None=> v,
+        None => v,
         Some(e) => {
             let mut v = v;
             v.push(e);
@@ -458,7 +538,7 @@ Stmts<T>: Vec<T> = {
 
 List<T>: Vec<T> = {
     <v:(<T> ",")*> <e:T?> => match e {
-        None=> v,
+        None => v,
         Some(e) => {
             let mut v = v;
             v.push(e);
@@ -550,5 +630,10 @@ extern {
         "IN"             => Tok::In,
         "OUT"            => Tok::Out,
         "INOUT"          => Tok::Inout,
+
+        "USE"            => Tok::Use,
+        "NON_INTRINSIC"  => Tok::NonIntrinsic,
+        "ONLY"           => Tok::Only,
+        "OPERATOR"       => Tok::Operator,
     }
 }

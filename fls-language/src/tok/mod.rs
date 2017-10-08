@@ -231,6 +231,12 @@ pub enum Tok<'input> {
     In,
     Out,
     Inout,
+
+    // modules
+    Use,
+    NonIntrinsic,
+    Only,
+    Operator,
 }
 
 pub struct Tokenizer<'input> {
@@ -245,41 +251,45 @@ pub struct Tokenizer<'input> {
 pub type Spanned<T> = (usize, T, usize);
 
 const KEYWORDS: &'static [(&'static str, Tok<'static>)] = &[
-    ("ALLOCATABLE",  Allocatable),
-    ("ASYNCHRONOUS", Asynchronous),
-    ("BIND",         Bind),
-    ("C",            C),
-    ("CHARACTER",    Character),
-    ("CODIMENSION",  Codimension),
-    ("COMPLEX",      Complex),
-    ("CONTIGUOUS",   Contiguous),
-    ("DIMENSION",    Dimension),
-    ("DOUBLE",       Double),
-    ("END",          End),
-    ("EXTERNAL",     External),
-    ("IN",           In),
-    ("INOUT",        Inout),
-    ("INTEGER",      Integer),
-    ("INTENT",       Intent),
-    ("INTRINSIC",    Intrinsic),
-    ("KIND",         Kind),
-    ("LOGICAL",      Logical),
-    ("NAME",         Name),
-    ("OPTIONAL",     Optional),
-    ("OUT",          Out),
-    ("PARAMETER",    Parameter),
-    ("POINTER",      Pointer),
-    ("PRECISION",    Precision),
-    ("PRINT",        Print)
-    ("PRIVATE",      Private),
-    ("PROGRAM",      Program),
-    ("PROTECTED",    Protected),
-    ("PUBLIC",       Public),
-    ("REAL",         Real),
-    ("SAVE",         Save),
-    ("TARGET",       Target),
-    ("VALUE",        Value),
-    ("VOLATILE",     Volatile),
+    ("ALLOCATABLE",   Allocatable),
+    ("ASYNCHRONOUS",  Asynchronous),
+    ("BIND",          Bind),
+    ("C",             C),
+    ("CHARACTER",     Character),
+    ("CODIMENSION",   Codimension),
+    ("COMPLEX",       Complex),
+    ("CONTIGUOUS",    Contiguous),
+    ("DIMENSION",     Dimension),
+    ("DOUBLE",        Double),
+    ("END",           End),
+    ("EXTERNAL",      External),
+    ("IN",            In),
+    ("INOUT",         Inout),
+    ("INTEGER",       Integer),
+    ("INTENT",        Intent),
+    ("INTRINSIC",     Intrinsic),
+    ("KIND",          Kind),
+    ("LOGICAL",       Logical),
+    ("NAME",          Name),
+    ("NON_INTRINSIC", NonIntrinsic),
+    ("ONLY",          Only),
+    ("OPERATOR",      Operator),
+    ("OPTIONAL",      Optional),
+    ("OUT",           Out),
+    ("PARAMETER",     Parameter),
+    ("POINTER",       Pointer),
+    ("PRECISION",     Precision),
+    ("PRINT",         Print)
+    ("PRIVATE",       Private),
+    ("PROGRAM",       Program),
+    ("PROTECTED",     Protected),
+    ("PUBLIC",        Public),
+    ("REAL",          Real),
+    ("SAVE",          Save),
+    ("TARGET",        Target),
+    ("USE",           Use),
+    ("VALUE",         Value),
+    ("VOLATILE",      Volatile),
 ];
 
 const INTRINSIC_OPERATORS: &'static [(&'static str, Tok<'static>)] = &[
@@ -450,12 +460,8 @@ impl<'input> Tokenizer<'input> {
                         _ => Some(error(InvalidCarriageReturn, idx0)),
                     }
                 }
-                Some((idx0, _)) => {
-                    // this function shouldn't have been called if not currently
-                    // at the start of a newline
-                    assert!(false);
-                    Some(error(UnrecognizedToken, idx0))
-                }
+                Some((idx0, _)) =>
+                    panic!("self.lookahead must match a new line start"),
                 None => None,
             };
         }
@@ -673,10 +679,7 @@ impl<'input> Tokenizer<'input> {
                 }
                 None => {
                     match terminate(EOF) {
-                        Continue => {
-                            debug_assert!(false);
-                            Some(Ok(last_idx + 1))
-                        }
+                        Continue => panic!("Cannot continue past EOF!"),
                         Stop => Some(Ok(last_idx + 1)),
                         Error(err_code) => Some(error(err_code, idx0)),
                     }
