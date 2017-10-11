@@ -16,8 +16,10 @@ ProgramUnit: types::ProgramUnit = {
 };
 
 MainProgram: types::ProgramUnit = {
-    <stmt:ProgramStmt?> SpecificationPart? ExecutionPart? InternalSubprogramPart? <end:EndProgramStmt> =>
-        types::ProgramUnit::new(stmt, end)
+    // <stmt:ProgramStmt?> SpecificationPart? ExecutionPart? InternalSubprogramPart? <end:EndProgramStmt> =>
+    //     types::ProgramUnit::new(stmt, end),
+    <stmt:ProgramStmt?> SpecificationPart? ExecutionPart? <end:EndProgramStmt> =>
+        types::ProgramUnit::new(stmt, end),
 };
 
 ProgramStmt: String = {
@@ -40,7 +42,7 @@ SpecificationPart: () = {
 };
 
 // R205
-ImplicitPart: () = {};
+// ImplicitPart: () = {};
 
 // R207
 DeclarationConstruct: () = {
@@ -211,7 +213,10 @@ Designator: () = {
 Variable = DesignatorOrFunctionReference;
 
 // R10
-SubstringRange = IntExpr? ":" IntExpr?;
+SubstringRange: () = {
+    ":" IntExpr?,
+    IntExpr ":" IntExpr?,
+};
 
 // R611
 DataRef = PartRef ("%" PartRef)*;
@@ -357,9 +362,12 @@ ActualArg: () = {
     // AltReturnSpec,
 };
 
-ExecutionPart: () = ExecutableConstruct ExecutablePartConstruct*;
-ExecutablePartConstruct: () = {};
-InternalSubprogramPart: () = {};
+ExecutionPart: () = {
+    // ExecutableConstruct ExecutablePartConstruct*,
+    ExecutableConstruct
+};
+// ExecutablePartConstruct: () = {};
+// InternalSubprogramPart: () = {};
 
 ExecutableConstruct: () = {
     ActionStmt,
