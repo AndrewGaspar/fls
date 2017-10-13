@@ -65,6 +65,81 @@ SpecificationConstruct: () = {
     TypeDeclarationStmt,
 };
 
+// R209
+ExecutionPart: () = {
+    // ExecutableConstruct ExecutionPartConstruct*,
+    ExecutableConstruct
+};
+
+// R210
+// ExecutionPartConstruct: () = {
+//     ExecutableConstruct,
+//     // FormatStmt,
+//     // EntryStmt,
+//     // DataStmt,
+// };
+
+// R211
+// InternalSubprogramPart: () = {};
+
+// R214
+ExecutableConstruct: () = {
+    ActionStmt,
+    // AssociateConstruct,
+    // BlockConstruct,
+    // CaseConstruct,
+    // CriticalConstruct,
+    // DoConstruct,
+    // IfConstruct,
+    // SelectRankConstruct,
+    // SelectTypeConstruct,
+    // WhereConstruct,
+    // ForallConstruct,
+};
+
+// R215
+ActionStmt: () = {
+    // AllocateStmt,
+    // AssignmentStmt,
+    // BackspaceStmt,
+    // CallStmt,
+    // CloseStmt,
+    // ContinueStmt,
+    // CycleStmt,
+    // DeallocateStmt,
+    // EndFunctionStmt,
+    // EndMpSubprogramStmt,
+    // EndProgramStmt,
+    // EndSubroutineStmt,
+    // EndfileStmt,
+    // ErrorStopStmt,
+    // EventPostStmt,
+    // EventWaitStmt,
+    // ExitStmt,
+    // FlushStmt,
+    // GotoStmt,
+    // IfStmt,
+    // InquireStmt,
+    // LockStmt,
+    // NullifyStmt,
+    // OpenStmt,
+    // PointerAssignmentStmt,
+    PrintStmt,
+    // ReadStmt,
+    // ReturnStmt,
+    // RewindStmt,
+    // StopStmt,
+    // SyncAllStmt,
+    // SyncImagesStmt,
+    // SyncMemoryStmt,
+    // UnlockStmt,
+    // WaitStmt,
+    // WhereStmt,
+    // WriteStmt,
+    // ComputedGotoStmt,
+    // ForallStmt,
+};
+
 // R216
 Keyword = "Id";
 
@@ -214,7 +289,7 @@ Designator: () = {
 // dis-ambiguated after parsing.
 // Variable = DesignatorOrFunctionReference;
 
-// R10
+// R610
 SubstringRange: () = {
     ":" IntExpr?,
     IntExpr ":" IntExpr?,
@@ -362,69 +437,6 @@ ActualArg: () = {
     // ProcedureName,
     // ProcComponentRef,
     // AltReturnSpec,
-};
-
-ExecutionPart: () = {
-    // ExecutableConstruct ExecutablePartConstruct*,
-    ExecutableConstruct
-};
-// ExecutablePartConstruct: () = {};
-// InternalSubprogramPart: () = {};
-
-ExecutableConstruct: () = {
-    ActionStmt,
-    // AssociateConstruct,
-    // BlockConstruct,
-    // CaseConstruct,
-    // CriticalConstruct,
-    // DoConstruct,
-    // IfConstruct,
-    // SelectRankConstruct,
-    // SelectTypeConstruct,
-    // WhereConstruct,
-    // ForallConstruct,
-};
-
-ActionStmt: () = {
-    // AllocateStmt,
-    // AssignmentStmt,
-    // BackspaceStmt,
-    // CallStmt,
-    // CloseStmt,
-    // ContinueStmt,
-    // CycleStmt,
-    // DeallocateStmt,
-    // EndFunctionStmt,
-    // EndMpSubprogramStmt,
-    // EndProgramStmt,
-    // EndSubroutineStmt,
-    // EndfileStmt,
-    // ErrorStopStmt,
-    // EventPostStmt,
-    // EventWaitStmt,
-    // ExitStmt,
-    // FlushStmt,
-    // GotoStmt,
-    // IfStmt,
-    // InquireStmt,
-    // LockStmt,
-    // NullifyStmt,
-    // OpenStmt,
-    // PointerAssignmentStmt,
-    PrintStmt,
-    // ReadStmt,
-    // ReturnStmt,
-    // RewindStmt,
-    // StopStmt,
-    // SyncAllStmt,
-    // SyncImagesStmt,
-    // SyncMemoryStmt,
-    // UnlockStmt,
-    // WaitStmt,
-    // WhereStmt,
-    // WriteStmt,
-    // ComputedGotoStmt,
-    // ForallStmt,
 };
 
 PrintStmt: () = "PRINT" Format "," List<OutputItem> ";";
