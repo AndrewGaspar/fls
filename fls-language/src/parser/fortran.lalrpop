@@ -18,7 +18,7 @@ ProgramUnit: types::ProgramUnit = {
 MainProgram: types::ProgramUnit = {
     // <stmt:ProgramStmt?> SpecificationPart? ExecutionPart? InternalSubprogramPart? <end:EndProgramStmt> =>
     //     types::ProgramUnit::new(stmt, end),
-    <stmt:ProgramStmt?> SpecificationPart? ExecutionPart? <end:EndProgramStmt> =>
+    <stmt:ProgramStmt?> SpecificationPart ExecutionPart? <end:EndProgramStmt> =>
         types::ProgramUnit::new(stmt, end),
 };
 
@@ -210,7 +210,9 @@ Designator: () = {
 };
 
 // R602
-Variable = DesignatorOrFunctionReference;
+// "Variable" is ambiguous with a Primary, so Variable will need to be
+// dis-ambiguated after parsing.
+// Variable = DesignatorOrFunctionReference;
 
 // R10
 SubstringRange: () = {
@@ -229,7 +231,7 @@ PartRef = PartName ("(" List<SectionSubscript> ")")?;
 PartName = "Id";
 
 // R617
-ArrayElement = DataRef;
+// ArrayElement = DataRef;
 
 // R619
 Subscript = IntExpr;
@@ -341,11 +343,11 @@ SubstringRangeOrArgListSuffix: () = {
 // FunctionReference: () = ProcedureDesignator "(" List<ActualArgSpec> ")";
 
 // R1223
-ProcedureDesignator: () = {
-    ProcedureName,
-    // ProcComponentRef,
-    DataRef "%" BindingName,
-};
+// ProcedureDesignator: () = {
+//     ProcedureName,
+//     // ProcComponentRef,
+//     DataRef "%" BindingName,
+// };
 
 BindingName: () = "Id";
 ProcedureName: () = "Id";
@@ -356,7 +358,7 @@ ActualArgSpec = (Keyword "=")? ActualArg;
 // R1225
 ActualArg: () = {
     Expr,
-    Variable,
+    // Variable,
     // ProcedureName,
     // ProcComponentRef,
     // AltReturnSpec,
