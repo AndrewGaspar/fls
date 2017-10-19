@@ -299,8 +299,15 @@ SubstringRange: () = {
 DataRef = PartRef ("%" PartRef)*;
 
 // R612
-PartRef = PartName ("(" List<SectionSubscript> ")")?;
-//PartRef = PartName ("(" List<SectionSubscript> ")")? ImageSelector?;
+PartRef = PartName ("(" SubstringRangeOrArgListOrSectionSubscript ")")?;
+//PartRef = PartName ("(" SubstringRangeOrArgListOrSectionSubscript ")")? ImageSelector?;
+
+SubstringRangeOrArgListOrSectionSubscript: () = {
+    SubscriptOrVectorSubscript,
+    Expr? ":" Expr?,
+    Subscript? ":" Subscript? (":" Stride)?,
+    List<ActualArgSpec>,
+};
 
 // part-name
 PartName = "Id";
@@ -312,11 +319,13 @@ PartName = "Id";
 Subscript = IntExpr;
 
 // R620
-SectionSubscript: () = {
-    Subscript,
-    SubscriptTriplet,
-    VectorSubscript,
-};
+// uses of 'section-subscript' cannot be disambiguated from
+// SubstringRangeOrArgOrSectionSubscript
+// SectionSubscript: () = {
+//     Subscript,
+//     SubscriptTriplet,
+//     VectorSubscript,
+// };
 
 // R621
 SubscriptTriplet = Subscript? ":" Subscript? (":"  Stride)?;
@@ -327,6 +336,9 @@ Stride = IntExpr;
 
 // R623
 VectorSubscript = IntExpr;
+
+// R619 + R623
+SubscriptOrVectorSubscript = IntExpr;
 
 // R701
 Primary: () = {
@@ -399,20 +411,8 @@ IntConstantExpr: () = IntExpr;
 // 'function-reference' is ambiguous with a designator (e.g. an array element
 // looks the same as a function call)
 DesignatorOrFunctionReference: () = {
-    DataRef ("(" SubstringRangeOrArgList ")")?,
+    DataRef,
     "CharLiteral" "(" SubstringRange ")",
-};
-
-SubstringRangeOrArgList: () = {
-    ":" Expr?,
-    Expr SubstringRangeOrArgListSuffix,
-    "Id" "=" Expr ("," ActualArgSpec)*,
-    ("Id" "=" Keyword)? "*" Label ("," ActualArgSpec)*,
-};
-
-SubstringRangeOrArgListSuffix: () = {
-    ":" Expr?,
-    ("," ActualArgSpec)*,
 };
 
 // FunctionReference: () = ProcedureDesignator "(" List<ActualArgSpec> ")";
